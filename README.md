@@ -1,4 +1,4 @@
-# 한국 주식 스캐너 (5종)
+# 한국 주식 스캐너 (5종) + 수급 체크
 
 미국 주식용으로 만든 스캐너 5개를 **코스피·코스닥** 대상으로 똑같이 돌립니다. 판정 조건은 미국판과 같고, 종목 목록·시세·가격 단위(원)만 한국에 맞췄습니다.
 
@@ -9,6 +9,7 @@
 | `kr_vcp.py` | 미너비니 VCP 검색기 (7조건·돌파·피벗 근접·형성 중·진단) | vcp-scanner |
 | `kr_triangle.py` | 업센딩 트라이앵글 (일봉·주봉, 진단) | triangle-scanner |
 | `kr_bb.py` | 볼린저밴드 과매도 반등 (반등 확인·반등 대기) | bb-scanner |
+| `kr_flow.py` | 💰 **수급 체크** (내가 고른 종목의 외국인·기관·개인 수급) | — (한국 전용) |
 | `krcommon.py` | 한국 종목 목록·시세·종목명 (공통) | — |
 
 ## 스캔 대상
@@ -23,6 +24,41 @@
 | 상대강도(RS) | 스캔 대상 종목 안에서의 순위. 이평선 스캐너의 "시장보다 강함" 비교 기준은 **코스피 지수** |
 
 종목 목록은 KRX 일별 시세(FinanceDataReader가 GitHub에 매일 올리는 KRX 데이터)로 만들고, 시세는 야후 파이낸스(코스피 `.KS`, 코스닥 `.KQ`)에서 받습니다.
+
+## 💰 수급 체크 (`kr_flow.py`)
+
+`flow_list.txt`에 적은 종목(주식·ETF)의 투자자별 순매수를 **평일 아침 08:00**에 보냅니다 (전날 확정 수급, 월요일에는 금요일 수급). 별도 워크플로(`.github/workflows/flow.yml`)로 돌아갑니다.
+
+| 항목 | 내용 |
+|---|---|
+| 데이터 | 네이버 증권 (모바일 API로 외국인·기관·개인, 실패하면 PC 페이지로 외국인·기관) |
+| 전일 | 직전 거래일 순매수 (억 원 = 수량 × 종가) |
+| 1주 · 2주 | 최근 5거래일 · 10거래일 누적 |
+| 연속 | 오늘까지 같은 방향이 이어진 거래일 수 (`+4d` = 4일 연속 순매수) |
+| 판정 (1주 기준) | 🟢 외국인·기관 동반 순매수 · 🔵 외국인 주도 · 🟣 기관 주도 · 🔴 동반 순매도 |
+| 흐름 메모 | 매도→매수 전환, 매수 가속(최근 1주가 그 전 1주의 1.5배 이상), 3일 이상 연속, 주가와 수급이 엇갈림, 인버스·레버리지 ETF의 개인 베팅, 외국인 보유율 변화 |
+
+```
+💰 수급 체크 | 10/29(목) 기준
+[매일 체크 종목]
+🔵 외   +626 기    -54 개   -571  삼성전자
+🟣 외   -136 기    +75 개    +61  SK하이닉스
+
+📋 매일 체크 종목
+삼성전자 005930  종가 244,000 (+9.9%)
+          전일     1주     2주   연속
+외국인     +83    +626    +910    +7d
+기관       -32     -54    +131    -1d
+개인       -51    -571  -1,041    -7d
+→ 🔵 외국인 주도 매수 (1주) · 거래대금 대비 +6%
+  · 외국인 7일 연속 순매수
+```
+
+**종목 바꾸기**: `flow_list.txt`에 종목코드를 한 줄에 하나씩 적습니다. `# ── 이름 ──` 줄로 묶음을 나눌 수 있습니다.
+
+**설치 추가분**: 디스코드 채널 하나(예: `kr-수급`)를 더 만들고, 웹후크를 Secret `KR_WEBHOOK_FLOW`로 등록하면 됩니다. 테스트는 **Actions → KR Flow → Run workflow**.
+
+⚠️ ETF의 기관 수급에는 유동성공급자(LP, 증권사)가 호가를 내는 물량이 섞여 있어서, 주식보다 의미가 약합니다. ETF는 외국인·개인 흐름 위주로 보세요.
 
 ## 실행 시각 (평일, 한국 시각)
 
@@ -55,18 +91,18 @@ TICKER  RS DAYS      LAST   50D%    HI%    LO%    1M%    3M%  NAME
 
 ## 설치 (약 15분, 저장소는 1개)
 
-### 1. 디스코드 채널 5개와 웹후크
-시스템마다 채널을 하나씩 만들고(예: `kr-이평선`, `kr-미너비니`, `kr-vcp`, `kr-삼각형`, `kr-볼린저`), 각 채널에서 **⚙ → 연동 → 웹후크 → 새 웹후크 → 웹후크 URL 복사**. 5개 주소를 메모장에 적어 두세요.
+### 1. 디스코드 채널 6개와 웹후크
+시스템마다 채널을 하나씩 만들고(예: `kr-이평선`, `kr-미너비니`, `kr-vcp`, `kr-삼각형`, `kr-볼린저`, `kr-수급`), 각 채널에서 **⚙ → 연동 → 웹후크 → 새 웹후크 → 웹후크 URL 복사**. 6개 주소를 메모장에 적어 두세요.
 
 ### 2. GitHub 새 저장소
 github.com 오른쪽 위 `+` → New repository → 이름 `kr-scanners` → Public → Create repository
-→ **uploading an existing file** → `krcommon.py`, `kr_ma.py`, `kr_trend.py`, `kr_vcp.py`, `kr_triangle.py`, `kr_bb.py`, `kr_watchlist.txt`, `requirements.txt`, `README.md` (9개) 끌어다 놓기 → Commit changes
+→ **uploading an existing file** → `krcommon.py`, `kr_ma.py`, `kr_trend.py`, `kr_vcp.py`, `kr_triangle.py`, `kr_bb.py`, `kr_flow.py`, `kr_watchlist.txt`, `flow_list.txt`, `requirements.txt`, `README.md` (11개) 끌어다 놓기 → Commit changes
 
 ### 3. 자동 실행 파일
-**Add file → Create new file** → 이름 칸에 `.github/workflows/main.yml` → zip 안의 같은 파일을 메모장으로 열어 전체 복사·붙여넣기 → Commit changes
+**Add file → Create new file** → 이름 칸에 `.github/workflows/main.yml` → zip 안의 같은 파일을 메모장으로 열어 전체 복사·붙여넣기 → Commit changes. 같은 방법으로 `.github/workflows/flow.yml`도 하나 더 만듭니다.
 
 ### 4. 웹후크 5개 등록
-**Settings → Secrets and variables → Actions → New repository secret**을 5번 반복합니다. 이름은 대문자 그대로 입력하세요.
+**Settings → Secrets and variables → Actions → New repository secret**을 6번 반복합니다. 이름은 대문자 그대로 입력하세요.
 
 | Name | Secret |
 |---|---|
@@ -75,6 +111,7 @@ github.com 오른쪽 위 `+` → New repository → 이름 `kr-scanners` → Pub
 | `KR_WEBHOOK_VCP` | VCP 채널 웹후크 |
 | `KR_WEBHOOK_TRIANGLE` | 삼각형 채널 웹후크 |
 | `KR_WEBHOOK_BB` | 볼린저 채널 웹후크 |
+| `KR_WEBHOOK_FLOW` | 수급 체크 채널 웹후크 |
 
 등록하지 않은 시스템은 실행은 되지만 디스코드로 보내지 않습니다.
 
