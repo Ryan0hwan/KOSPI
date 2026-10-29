@@ -1,7 +1,7 @@
 """
 한국 주식 스캐너 공통 모듈
 - 종목 목록: KRX 일별 시세 (FinanceDataReader가 GitHub에 올려 두는 KRX 캐시)
-  → 최근 20거래일 평균 거래대금이 MIN_TURNOVER(기본 30억 원) 이상인 코스피·코스닥 보통주
+  → 시가총액 MIN_MARCAP(기본 1조 원) 이상 + 최근 20거래일 평균 거래대금 MIN_TURNOVER(기본 100억 원) 이상인 코스피·코스닥 보통주
   (우선주·스팩·관리종목·투자주의환기종목 제외) + kr_watchlist.txt
 - 시세: 야후 파이낸스 (코스피 = 코드.KS, 코스닥 = 코드.KQ)
 - 미국판 스캐너 코드는 그대로 두고, 종목 목록·시세·종목명 함수만 이 모듈 것으로 바꿔 끼웁니다.
@@ -22,7 +22,8 @@ ROOT = Path(__file__).parent
 COMMON = ROOT / "state" / "common"
 COMMON.mkdir(parents=True, exist_ok=True)
 KST = ZoneInfo("Asia/Seoul")
-MIN_TURNOVER = float(os.environ.get("MIN_TURNOVER", "3000000000"))   # 20일 평균 거래대금(원)
+MIN_TURNOVER = float(os.environ.get("MIN_TURNOVER", "10000000000"))  # 20일 평균 거래대금(원) — 100억
+MIN_MARCAP = float(os.environ.get("MIN_MARCAP", "1000000000000"))     # 시가총액(원) — 1조
 TURNOVER_DAYS = int(os.environ.get("TURNOVER_DAYS", "20"))
 CACHE_URL = "https://raw.githubusercontent.com/FinanceData/fdr_krx_data_cache/refs/heads/master/data/listing/krx/{d}.csv"
 GROUP_LABEL = {"kospi": "KOSPI", "kosdaq": "KOSDAQ", "watchlist": "관심종목"}
@@ -63,7 +64,7 @@ def build_universe() -> pd.DataFrame:
         if d.weekday() < 5:
             df = _fetch_day(d)
             if df is not None:
-                days.append(df[["Code", "Name", "Market", "Dept", "Amount", "Close"]].assign(date=d))
+                days.append(df[["Code", "Name", "Market", "Dept", "Amount", "Close", "Marcap"]].assign(date=d))
                 if len(days) >= TURNOVER_DAYS:
                     break
         d -= dt.timedelta(days=1)
@@ -73,12 +74,13 @@ def build_universe() -> pd.DataFrame:
     latest = latest[latest.apply(_is_common, axis=1)]
     amt = pd.concat(days).groupby("Code")["Amount"].mean()
     latest = latest.assign(turnover=latest["Code"].map(amt))
-    uni = latest[latest["turnover"] >= MIN_TURNOVER]
+    uni = latest[(latest["turnover"] >= MIN_TURNOVER) & (latest["Marcap"] >= MIN_MARCAP)]
     out = pd.DataFrame({
         "ticker": uni["Code"].astype(str),
         "name": uni["Name"].astype(str),
         "market": uni["Market"].map(lambda m: "KOSPI" if m == "KOSPI" else "KOSDAQ"),
         "turnover": uni["turnover"].round(0),
+        "marcap": uni["Marcap"],
     }).sort_values("turnover", ascending=False)
     out.to_csv(COMMON / "universe.csv", index=False)
     # 전체 이름표 (관심종목·진단용 종목명 조회)
@@ -87,8 +89,8 @@ def build_universe() -> pd.DataFrame:
     names.to_csv(COMMON / "names.csv", index=False)
     (COMMON / "universe_meta.json").write_text(json.dumps(
         {"date": str(days[0]["date"].iloc[0]), "days": len(days), "count": len(out), "built": str(today)}))
-    print(f"한국 종목 목록: 기준일 {days[0]['date'].iloc[0]}, {len(days)}거래일 평균 거래대금 "
-          f"{MIN_TURNOVER / 1e8:.0f}억 이상 {len(out)}종목")
+    print(f"한국 종목 목록: 기준일 {days[0]['date'].iloc[0]}, 시가총액 {MIN_MARCAP / 1e12:g}조 이상 + "
+          f"{len(days)}거래일 평균 거래대금 {MIN_TURNOVER / 1e8:.0f}억 이상 {len(out)}종목")
     return out
 
 
