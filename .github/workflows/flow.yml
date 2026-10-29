@@ -1,0 +1,23 @@
+name: KR Flow
+
+on:
+  schedule:
+    # 평일 아침 08:00 (한국) = 전날 23:00 UTC. 월요일 아침에는 금요일 수급
+    - cron: "0 23 * * 0-4"
+  workflow_dispatch:
+
+jobs:
+  flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python kr_flow.py
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.KR_WEBHOOK_FLOW }}
+          PYTHONUNBUFFERED: "1"
