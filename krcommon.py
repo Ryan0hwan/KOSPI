@@ -39,7 +39,12 @@ def _fetch_day(d: dt.date) -> pd.DataFrame | None:
             return None
         df = pd.read_csv(io.StringIO(r.content.decode("utf-8-sig")), index_col=0,
                          dtype={"Code": str, "Dept": str, "MarketId": str})
-        return df if len(df) > 1000 else None
+        for c in ("Amount", "Marcap", "Close"):
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        # 장 시작 전에는 그날 파일이 있어도 시세가 비어 있음 → 그 날은 건너뜀
+        if len(df) < 1000 or df["Amount"].fillna(0).sum() <= 0 or (df["Marcap"].fillna(0) > 0).sum() < 1000:
+            return None
+        return df
     except Exception as e:
         print(f"[경고] KRX 목록 {d} 실패: {e}")
         return None

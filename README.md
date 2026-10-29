@@ -1,4 +1,4 @@
-# 한국 주식 스캐너 (5종) + 수급 체크
+# 한국 주식 스캐너 (5종) + 수급 체크 + 시장 수급
 
 미국 주식용으로 만든 스캐너 5개를 **코스피·코스닥** 대상으로 똑같이 돌립니다. 판정 조건은 미국판과 같고, 종목 목록·시세·가격 단위(원)만 한국에 맞췄습니다.
 
@@ -10,6 +10,7 @@
 | `kr_triangle.py` | 업센딩 트라이앵글 (일봉·주봉, 진단) | triangle-scanner |
 | `kr_bb.py` | 볼린저밴드 과매도 반등 (반등 확인·반등 대기) | bb-scanner |
 | `kr_flow.py` | 💰 **수급 체크** (내가 고른 종목의 외국인·기관·개인 수급) | — (한국 전용) |
+| `kr_marketflow.py` | 🏦 **시장 수급** (코스피·코스닥 전체 + 동반 매수·수급 주도주·상위/하위) | — (한국 전용) |
 | `krcommon.py` | 한국 종목 목록·시세·종목명 (공통) | — |
 
 ## 스캔 대상
@@ -60,6 +61,45 @@
 
 ⚠️ ETF의 기관 수급에는 유동성공급자(LP, 증권사)가 호가를 내는 물량이 섞여 있어서, 주식보다 의미가 약합니다. ETF는 외국인·개인 흐름 위주로 보세요.
 
+## 🏦 시장 수급 (`kr_marketflow.py`)
+
+**평일 18:30**에 국장 전체 수급을 보냅니다 (확정 수급 반영 후). 별도 워크플로(`.github/workflows/marketflow.yml`)로 돌아갑니다.
+
+| 섹션 | 내용 |
+|---|---|
+| 🏦 시장 수급 | 코스피·코스닥 투자자별 순매수 (당일·5일·20일, 억 원) + **기관 세부** (금융투자·투신·연기금·보험·은행) + 연속 일수 + 해석 |
+| 🏭 업종별 수급 | 약 200종목을 **약 28개 업종**(반도체, 반도체 장비/소재, 2차전지, 조선, 방산/우주, 전력기기/전선, 바이오/제약, 은행, 증권, 지주사 등)으로 묶어 외국인·기관 1주·20일 순매수 합계. 🟢 동반 유입 · 🔴 동반 이탈 · 유입 상위 3 · 이탈 상위 3 · **유입 전환**(20일 순매도인데 1주 순매수)·**이탈 전환** |
+| 🤝 동반 순매수 | 스캔 대상(시총 1조+·거래대금 100억+ 약 200종목 + 관심종목) 중 외국인·기관이 1주 동안 함께 산 종목 상위 15 |
+| 🚀 수급 주도주 | 동반 순매수 + **50일선 위 + 52주 고점 −10% 이내** (★ = 50일선 > 200일선). 상위 20 |
+| 🔵🟣 TOP 10 | 외국인·기관 각각 1주 순매수 상위 10 |
+| 🔻 TOP 10 | 외국인·기관 각각 1주 순매도 상위 10 |
+
+```
+🏭 업종별 수급
+업종               수   외1주   기1주   합1주   합20일
+🟢조선              5  +1,061    +226  +1,286   +4,742
+🔴화학              8    -239    -438    -677     +885
+· 20일은 순매수인데 최근 1주 순매도 (이탈 전환): 자동차, 화학
+
+KOSPI  (10/29)
+                 당일      5일     20일   연속
+개인           -1,603   -2,722   +4,010    -1d
+외국인         -2,648   -2,534     -735    -2d
+기관             -496   -6,608   +2,336    -5d
+└ 금융투자       +840   +2,798   -4,703    +2d
+└ 연기금       +1,497   -1,739      +15    +1d
+  · 기관 5일 연속 순매도
+  · 최근 1주 외국인·기관 동반 순매도 (개인만 매수, 주의)
+
+🤝 외국인·기관 동반 순매수 (1주)
+CODE      외1주   기1주 외연속 기연속 비중%  종목
+012750     +360    +183    +4d    +7d    +7  에스원
+```
+
+업종 분류는 KRX 상장사 정보(세부업종·주요제품)를 규칙으로 묶은 것이라, 일부 종목은 실제 사업과 다르게 묶일 수 있습니다. 잘못 묶인 종목은 `kr_marketflow.py`의 `OVERRIDE_NAME`에 `"종목명": "업종"`으로 추가하면 됩니다.
+
+**설치 추가분**: 디스코드 채널(예: `kr-시장수급`)을 만들고 웹후크를 Secret `KR_WEBHOOK_MARKET`으로 등록. **Add file → Create new file**로 `.github/workflows/marketflow.yml` 생성. 테스트는 **Actions → KR Market Flow → Run workflow** (약 3~5분, 종목 200개를 하나씩 받기 때문).
+
 ## 실행 시각 (평일, 한국 시각)
 
 | 시각 | 실행 |
@@ -91,18 +131,18 @@ TICKER  RS DAYS      LAST   50D%    HI%    LO%    1M%    3M%  NAME
 
 ## 설치 (약 15분, 저장소는 1개)
 
-### 1. 디스코드 채널 6개와 웹후크
-시스템마다 채널을 하나씩 만들고(예: `kr-이평선`, `kr-미너비니`, `kr-vcp`, `kr-삼각형`, `kr-볼린저`, `kr-수급`), 각 채널에서 **⚙ → 연동 → 웹후크 → 새 웹후크 → 웹후크 URL 복사**. 6개 주소를 메모장에 적어 두세요.
+### 1. 디스코드 채널 7개와 웹후크
+시스템마다 채널을 하나씩 만들고(예: `kr-이평선`, `kr-미너비니`, `kr-vcp`, `kr-삼각형`, `kr-볼린저`, `kr-수급`, `kr-시장수급`), 각 채널에서 **⚙ → 연동 → 웹후크 → 새 웹후크 → 웹후크 URL 복사**. 7개 주소를 메모장에 적어 두세요.
 
 ### 2. GitHub 새 저장소
 github.com 오른쪽 위 `+` → New repository → 이름 `kr-scanners` → Public → Create repository
-→ **uploading an existing file** → `krcommon.py`, `kr_ma.py`, `kr_trend.py`, `kr_vcp.py`, `kr_triangle.py`, `kr_bb.py`, `kr_flow.py`, `kr_watchlist.txt`, `flow_list.txt`, `requirements.txt`, `README.md` (11개) 끌어다 놓기 → Commit changes
+→ **uploading an existing file** → `krcommon.py`, `kr_ma.py`, `kr_trend.py`, `kr_vcp.py`, `kr_triangle.py`, `kr_bb.py`, `kr_flow.py`, `kr_marketflow.py`, `kr_watchlist.txt`, `flow_list.txt`, `requirements.txt`, `README.md` (12개) 끌어다 놓기 → Commit changes
 
 ### 3. 자동 실행 파일
-**Add file → Create new file** → 이름 칸에 `.github/workflows/main.yml` → zip 안의 같은 파일을 메모장으로 열어 전체 복사·붙여넣기 → Commit changes. 같은 방법으로 `.github/workflows/flow.yml`도 하나 더 만듭니다.
+**Add file → Create new file** → 이름 칸에 `.github/workflows/main.yml` → zip 안의 같은 파일을 메모장으로 열어 전체 복사·붙여넣기 → Commit changes. 같은 방법으로 `.github/workflows/flow.yml`과 `.github/workflows/marketflow.yml`도 만듭니다.
 
 ### 4. 웹후크 5개 등록
-**Settings → Secrets and variables → Actions → New repository secret**을 6번 반복합니다. 이름은 대문자 그대로 입력하세요.
+**Settings → Secrets and variables → Actions → New repository secret**을 7번 반복합니다. 이름은 대문자 그대로 입력하세요.
 
 | Name | Secret |
 |---|---|
@@ -112,6 +152,7 @@ github.com 오른쪽 위 `+` → New repository → 이름 `kr-scanners` → Pub
 | `KR_WEBHOOK_TRIANGLE` | 삼각형 채널 웹후크 |
 | `KR_WEBHOOK_BB` | 볼린저 채널 웹후크 |
 | `KR_WEBHOOK_FLOW` | 수급 체크 채널 웹후크 |
+| `KR_WEBHOOK_MARKET` | 시장 수급 채널 웹후크 |
 
 등록하지 않은 시스템은 실행은 되지만 디스코드로 보내지 않습니다.
 
