@@ -271,8 +271,14 @@ def won(x: float, w: int = 8) -> str:
     """억 원 표시: 10억 이상은 정수, 미만은 소수 1자리"""
     if x is None or pd.isna(x):
         return f"{'-':>{w}}"
-    s = f"{x:+,.0f}" if abs(x) >= 10 else f"{x:+.1f}"
+    if abs(x) < 0.05:
+        s = "0"                                                   # -0.0 / +0.0 대신 0
+    else:
+        s = f"{x:+,.0f}" if abs(x) >= 10 else f"{x:+.1f}"
     return f"{s:>{w}}"
+
+
+SEP = "─" * 44                                                    # 종목 카드 사이 구분선
 
 
 def fit(s: str, w: int, right: bool = False) -> str:
@@ -310,7 +316,7 @@ def send_cards(title: str, blocks: list[list[str]]):
     for b in blocks:
         if sum(len(x) + 1 for x in buf + b) > 1750:
             flush()
-        buf += b + [""]
+        buf += ([SEP] if buf else []) + b                         # 같은 메시지 안의 카드 사이에 구분선
     flush()
 
 
@@ -344,8 +350,8 @@ def main():
         lines.append(f"[{gname}]")
         for c, name, r, _ in rows:
             e, _v = r["verdict"]
-            lines.append(f"{e} 외{won(r['frgn_5'], 7)} 기{won(r['inst_5'], 7)}"
-                         + (f" 개{won(r['indv_5'], 7)}" if r["has_indv"] else "") + f"  {name}")
+            lines.append(f"{e} 외{won(r['frgn_5'], 8)} 기{won(r['inst_5'], 8)}"
+                         + (f" 개{won(r['indv_5'], 8)}" if r["has_indv"] else "") + f"  {name}")
         lines.append("")
     post(f"**💰 수급 체크 | {day:%m/%d}({wd}) 기준**\n"
          "1주(5거래일) 누적 순매수, 단위 억 원 · 🟢 외·기 동반 매수 🔵 외국인 주도 🟣 기관 주도 🔴 동반 매도\n"
