@@ -1,4 +1,4 @@
-# 한국 주식 스캐너 (5종) + 수급 체크 + 시장 수급
+# 한국 주식 스캐너 (5종) + 거래량 델타 + 수급 체크 + 시장 수급
 
 미국 주식용으로 만든 스캐너 5개를 **코스피·코스닥** 대상으로 똑같이 돌립니다. 판정 조건은 미국판과 같고, 종목 목록·시세·가격 단위(원)만 한국에 맞췄습니다.
 
@@ -9,6 +9,7 @@
 | `kr_vcp.py` | 미너비니 VCP 검색기 (7조건·돌파·피벗 근접·형성 중·진단) | vcp-scanner |
 | `kr_triangle.py` | 업센딩 트라이앵글 (일봉·주봉, 진단) | triangle-scanner |
 | `kr_bb.py` | 볼린저밴드 과매도 반등 (반등 확인·반등 대기) | bb-scanner |
+| `kr_delta.py` | 🟩 **거래량 델타** (하루 큰 양봉 · 5일 · 10일 누적 매수 우위) | volume-delta |
 | `kr_flow.py` | 💰 **수급 체크** (내가 고른 종목의 외국인·기관·개인 수급) | — (한국 전용) |
 | `kr_marketflow.py` | 🏦 **시장 수급** (코스피·코스닥 전체 + 동반 매수·수급 주도주·상위/하위) | — (한국 전용) |
 | `krcommon.py` | 한국 종목 목록·시세·종목명 (공통) | — |
@@ -25,6 +26,41 @@
 | 상대강도(RS) | 스캔 대상 종목 안에서의 순위. 이평선 스캐너의 "시장보다 강함" 비교 기준은 **코스피 지수** |
 
 종목 목록은 KRX 일별 시세(FinanceDataReader가 GitHub에 매일 올리는 KRX 데이터)로 만들고, 시세는 야후 파이낸스(코스피 `.KS`, 코스닥 `.KQ`)에서 받습니다.
+
+## 🟩 거래량 델타 (`kr_delta.py`)
+
+미국판 volume-delta와 같은 방식입니다. 정규장(09:00~15:30)을 5분봉 78개로 나눠 **오른 5분봉 거래량 − 내린 5분봉 거래량 = 델타**를 계산합니다. 대상은 위의 스캔 대상(약 200종목 + 관심종목)과 같습니다.
+
+| 표 | 조건 |
+|---|---|
+| 🟩 하루 큰 양봉 | 델타 ÷ 그날 거래량 +30% 이상 + 델타가 최근 20일 평균 델타 크기의 2배 이상 |
+| 📶 5일 누적 | 5일 쏠림 +20% 이상 · 양봉 델타 4일 이상 · 큰 양봉 1회 이상 |
+| 📶 10일 누적 | 10일 쏠림 +15% 이상 · 양봉 델타 6일 이상 · 큰 양봉 2회 이상 |
+
+```
+🟩 하루 큰 양봉 (쏠림 30%↑ + 평균의 2배↑)
+코드        델타  쏠림% 평균x  RVOL  등락%  3일 50일 외국인   기관  주도  이름
+005930    +1.1조    +81  15.9   2.4   +0.1  -++   위   +350   +280  외+기 삼성전자
+
+📶 5일 누적 매수 우위 (쏠림 20%↑ · 양봉 4일↑ · 큰 양봉 1회↑)
+코드     누적델타  쏠림%  양봉 큰양봉  RVOL   5일% 50일 외국인   기관  주도  이름
+000660     +2.5조    +52   5/5      5   1.6   +0.3   위   -350 +1,050  기관  SK하이닉스
+```
+
+**매수 주체 (외국인·기관·주도)**: 표에 나온 종목만 네이버에서 외국인·기관 순매수를 받아, **표와 같은 기간**(하루 표 = 그날, 5일 표 = 5일 합계, 10일 표 = 10일 합계)으로 계산합니다. 단위는 억 원입니다.
+
+| 주도 | 기준 |
+|---|---|
+| 외+기 | 외국인·기관 둘 다 순매수이고, 작은 쪽이 둘 합계의 25% 이상 |
+| 외국인 / 기관 | 더 많이 순매수한 쪽 (한쪽만 사거나 한쪽이 압도적) |
+| 없음 | 외국인·기관 모두 순매도 → 개인·기타가 산 것 |
+| 미갱신 | 네이버에 그날 수급이 아직 없음 (직전일까지로 계산) |
+
+- 델타 금액은 **억·조 원** 단위입니다 (델타 주식 수 × 종가).
+- 외국인·기관 수급(`kr_flow.py`)과는 다른 지표입니다. 수급은 "누가" 샀는지, 델타는 장중에 "올라가는 체결"이 많았는지를 봅니다. 둘이 같은 방향이면 신뢰도가 높습니다.
+- 장 마감 동시호가(15:20~15:30)나 블록딜이 한 5분봉에 몰리면 델타가 왜곡될 수 있습니다.
+- 16:10 실행 때 기관 수급은 잠정치입니다. 최종 확정치와 조금 다를 수 있습니다.
+- 진단: Run workflow에서 system을 `delta`, diagnose에 `SK하이닉스, 005930`처럼 넣으면 하루·5일·10일 델타와 외국인·기관 수급, 통과/탈락 이유가 옵니다.
 
 ## 💰 수급 체크 (`kr_flow.py`)
 
@@ -106,7 +142,7 @@ CODE      외1주   기1주 외연속 기연속 비중%  종목
 |---|---|
 | 10:30 · 13:00 | 이평선만 (장중 터치) |
 | 15:00 | 이평선 + 📉 장기 지지선 |
-| **16:10** | **5개 전부** (장 마감 후 확정 데이터) |
+| **16:10** | **5개 전부 + 거래량 델타** (장 마감 후 확정 데이터) |
 
 GitHub 사정으로 5~30분 늦을 수 있습니다. 야후 한국 시세는 약 20분 지연입니다. 휴장일에는 시세가 없어 자동으로 건너뜁니다.
 
@@ -131,18 +167,18 @@ TICKER  RS DAYS      LAST   50D%    HI%    LO%    1M%    3M%  NAME
 
 ## 설치 (약 15분, 저장소는 1개)
 
-### 1. 디스코드 채널 7개와 웹후크
-시스템마다 채널을 하나씩 만들고(예: `kr-이평선`, `kr-미너비니`, `kr-vcp`, `kr-삼각형`, `kr-볼린저`, `kr-수급`, `kr-시장수급`), 각 채널에서 **⚙ → 연동 → 웹후크 → 새 웹후크 → 웹후크 URL 복사**. 7개 주소를 메모장에 적어 두세요.
+### 1. 디스코드 채널 8개와 웹후크
+시스템마다 채널을 하나씩 만들고(예: `kr-이평선`, `kr-미너비니`, `kr-vcp`, `kr-삼각형`, `kr-볼린저`, `kr-델타`, `kr-수급`, `kr-시장수급`), 각 채널에서 **⚙ → 연동 → 웹후크 → 새 웹후크 → 웹후크 URL 복사**. 8개 주소를 메모장에 적어 두세요.
 
 ### 2. GitHub 새 저장소
 github.com 오른쪽 위 `+` → New repository → 이름 `kr-scanners` → Public → Create repository
-→ **uploading an existing file** → `krcommon.py`, `kr_ma.py`, `kr_trend.py`, `kr_vcp.py`, `kr_triangle.py`, `kr_bb.py`, `kr_flow.py`, `kr_marketflow.py`, `kr_watchlist.txt`, `flow_list.txt`, `requirements.txt`, `README.md` (12개) 끌어다 놓기 → Commit changes
+→ **uploading an existing file** → `krcommon.py`, `kr_ma.py`, `kr_trend.py`, `kr_vcp.py`, `kr_triangle.py`, `kr_bb.py`, `kr_delta.py`, `kr_flow.py`, `kr_marketflow.py`, `kr_watchlist.txt`, `flow_list.txt`, `requirements.txt`, `README.md` (13개) 끌어다 놓기 → Commit changes
 
 ### 3. 자동 실행 파일
 **Add file → Create new file** → 이름 칸에 `.github/workflows/main.yml` → zip 안의 같은 파일을 메모장으로 열어 전체 복사·붙여넣기 → Commit changes. 같은 방법으로 `.github/workflows/flow.yml`과 `.github/workflows/marketflow.yml`도 만듭니다.
 
-### 4. 웹후크 5개 등록
-**Settings → Secrets and variables → Actions → New repository secret**을 7번 반복합니다. 이름은 대문자 그대로 입력하세요.
+### 4. 웹후크 8개 등록
+**Settings → Secrets and variables → Actions → New repository secret**을 8번 반복합니다. 이름은 대문자 그대로 입력하세요.
 
 | Name | Secret |
 |---|---|
@@ -151,13 +187,14 @@ github.com 오른쪽 위 `+` → New repository → 이름 `kr-scanners` → Pub
 | `KR_WEBHOOK_VCP` | VCP 채널 웹후크 |
 | `KR_WEBHOOK_TRIANGLE` | 삼각형 채널 웹후크 |
 | `KR_WEBHOOK_BB` | 볼린저 채널 웹후크 |
+| `KR_WEBHOOK_DELTA` | 거래량 델타 채널 웹후크 |
 | `KR_WEBHOOK_FLOW` | 수급 체크 채널 웹후크 |
 | `KR_WEBHOOK_MARKET` | 시장 수급 채널 웹후크 |
 
 등록하지 않은 시스템은 실행은 되지만 디스코드로 보내지 않습니다.
 
 ### 5. 테스트
-**Actions → KR Scanners → Run workflow** → system `all` → 초록 버튼. 첫 단계(universe)에서 종목 목록을 만들고, 이어서 5개 시스템이 동시에 돌아갑니다 (5~15분).
+**Actions → KR Scanners → Run workflow** → system `all` → 초록 버튼. 첫 단계(universe)에서 종목 목록을 만들고, 이어서 6개 시스템(5개 + 델타)이 동시에 돌아갑니다 (5~15분).
 
 전체 실행 버튼(run-all)을 설치해 두셨다면 이 저장소도 자동으로 포함됩니다.
 
@@ -165,9 +202,9 @@ github.com 오른쪽 위 `+` → New repository → 이름 `kr-scanners` → Pub
 
 | 입력 | 설명 |
 |---|---|
-| system | `all` 또는 하나만 (`ma`, `trend`, `vcp`, `triangle`, `bb`) |
+| system | `all` 또는 하나만 (`ma`, `trend`, `vcp`, `triangle`, `bb`, `delta`) |
 | force | 켜 두면 휴장일·장 시간과 상관없이 가장 최근 거래일 기준으로 실행 |
-| diagnose | VCP·삼각형 진단. 종목코드나 종목명을 쉼표로 (`005930,에이피알`). VCP는 날짜 지정 가능 (`005930@2026-01-05`). 진단만 보려면 system을 `vcp`나 `triangle`로 고르세요 |
+| diagnose | VCP·삼각형·델타 진단. 종목코드나 종목명을 쉼표로 (`005930,에이피알`). VCP는 날짜 지정 가능 (`005930@2026-01-05`). 진단만 보려면 system을 `vcp`·`triangle`·`delta` 중 하나로 고르세요 |
 
 ## 관심종목 추가
 
