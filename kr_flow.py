@@ -357,6 +357,24 @@ def main():
          "1주(5거래일) 누적 순매수, 단위 억 원 · 🟢 외·기 동반 매수 🔵 외국인 주도 🟣 기관 주도 🔴 동반 매도\n"
          "```\n" + "\n".join(lines).strip() + "\n```")
 
+    # ①-2 그림: 종목별 외국인·기관 1주 순매수
+    try:
+        import charts
+        labels, fa, ia, seps = [], [], [], []
+        for gname, codes in groups:
+            rows = [(c, *results[c]) for c in codes if c in results]
+            for c, name, r, _ in rows:
+                labels.append(name[:12])
+                fa.append(float(r["frgn_5"]))
+                ia.append(float(r["inst_5"]))
+            if rows:
+                seps.append(len(labels) - 1)
+        charts.safe(lambda: charts.send(charts.hbar_pair(
+            labels, fa, ia, title=f"종목별 1주 순매수 · {day:%m/%d}({wd})",
+            subtitle="파랑 = 외국인 · 보라 = 기관 · 단위 억 원 · 선 = 묶음 구분", sep_after=seps[:-1]), filename="flow.png"))
+    except Exception as e:
+        print(f"[경고] 차트 건너뜀: {e}")
+
     # ② 묶음별 상세
     for gname, codes in groups:
         blocks = [card(c, results[c][0], results[c][1]) for c in codes if c in results]

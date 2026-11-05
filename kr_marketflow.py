@@ -263,6 +263,49 @@ def sector_table(sf: pd.DataFrame, sectors: dict[str, str]) -> list[str]:
 
 
 # ───────────── 실행 ─────────────
+# ───────────── 차트 (그림) ─────────────
+def _chart(fn, *a):
+    try:
+        import charts
+        charts.safe(fn, *a)
+    except Exception as e:
+        print(f"[경고] 차트 건너뜀: {e}")
+
+
+def investor_chart(mkts: dict, day, wd):
+    """⑧ 코스피·코스닥 투자자별 순매수 (당일 / 5일)"""
+    import charts
+    keys = [("외국인", "외국인"), ("기관계", "기관"), ("연기금", "연기금"), ("금융투자", "금융투자"),
+            ("기타법인", "기타법인"), ("개인", "개인")]
+    labels, a, b, seps = [], [], [], []
+    for name, df in mkts.items():
+        for key, lab in keys:
+            if key in df and not df[key].isna().all():
+                labels.append(f"{name} {lab}")
+                a.append(float(df[key].iloc[-1]))
+                b.append(float(df[key].tail(5).sum()))
+        seps.append(len(labels) - 1)
+    if labels:
+        charts.send(charts.hbar_pair(labels, a, b, names=("당일", "5일"), title=f"투자자별 순매수 · {day:%m/%d}({wd})",
+                                     subtitle="코스피·코스닥 시장 전체 · 단위 억 원", colors=(charts.BLUE, charts.YELLOW),
+                                     sep_after=seps[:-1]), filename="investors.png")
+
+
+def sector_chart(sf: pd.DataFrame, sectors: dict, day, wd):
+    """⑦ 업종별 외국인+기관 1주 순매수"""
+    import charts
+    d = sf.assign(sector=sf["t"].map(sectors).fillna("기타"))
+    g = d.groupby("sector").agg(n=("t", "size"), f5=("f5", "sum"), i5=("i5", "sum"))
+    items = []
+    for sec, r in g.iterrows():
+        col = charts.GREEN if r["f5"] > 0 and r["i5"] > 0 else charts.RED if r["f5"] < 0 and r["i5"] < 0 else charts.GRAY
+        items.append((f"{sec} ({int(r['n'])})", float(r["f5"] + r["i5"]), col))
+    if items:
+        charts.send(charts.hbar(items, f"업종별 외국인+기관 1주 순매수 · {day:%m/%d}({wd})",
+                                "초록 = 외국인·기관 동반 매수 · 빨강 = 동반 매도 · 회색 = 엇갈림 · 괄호 = 종목 수 · 단위 억 원",
+                                unit="억", fmt="{:+,.0f}"), filename="kr_sectors.png")
+
+
 def main():
     # ① 시장 전체
     mkts = {}
@@ -286,6 +329,7 @@ def main():
     blocks = [market_block(n, d) for n, d in mkts.items()]
     if blocks:
         F.send_cards(f"🏦 시장 수급 | {day:%m/%d}({wd}) 기준 · 단위 억 원", blocks)
+        _chart(investor_chart, mkts, day, wd)
     else:
         F.post(f"**🏦 시장 수급 | {day:%m/%d}({wd})**\n⚠️ 시장 전체 투자자별 매매동향을 받지 못했습니다. 종목별 수급만 보냅니다.")
 
@@ -298,6 +342,7 @@ def main():
         if sectors:
             F.send_cards(f"🏭 업종별 수급 (외국인+기관, 스캔 대상 {len(sf)}종목 합계) · 🟢 동반 유입 🔴 동반 이탈",
                          [sector_table(sf, sectors)])
+            _chart(sector_chart, sf, sectors, day, wd)
         else:
             F.post("⚠️ 업종 분류 데이터를 받지 못해 업종별 수급은 건너뜁니다.")
 
