@@ -3,7 +3,7 @@ name: KR Market Flow
 on:
   schedule:
     # 평일 18:30 (한국) = 09:30 UTC. 확정 수급이 반영된 뒤
-    - cron: "30 9 * * 1-5"
+    - cron: "30 11 * * 1-5"
   workflow_dispatch:
 
 jobs:
